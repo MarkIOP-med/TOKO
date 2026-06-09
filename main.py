@@ -55,7 +55,7 @@ from response_executor import flash_all_off
 def print_banner() -> None:
     """Print system info at startup."""
     print("=" * 50)
-    print("  TOKO / SmartTouch System")
+    print("  TOKO System")
     print("  Starting up...")
     print("=" * 50)
 

@@ -1,13 +1,13 @@
 # TOKO — Software Reference
 
-> Living technical reference for the TOKO / SmartTouch system software.
+> Living technical reference for the TOKO system software.
 > Updated as each development step is completed.
 
 ---
 
 ## 1. Project Overview
 
-TOKO is the software system running on the Raspberry Pi inside the SmartTouch Control Unit. It manages a network of up to 12 SMART_PAD sensors connected via BASE boards, reads child touch interactions, and responds with light, vibration, and sound feedback according to a configurable progression map.
+TOKO is the software system running on the Raspberry Pi inside the Control Unit. It manages a network of up to 12 SMART_PAD sensors connected via BASE boards, reads child touch interactions, and responds with light, vibration, and sound feedback according to a configurable progression map.
 
 The system supports three tiers of play — free play, leveled free play, and guided themed tasks — and is designed to support infant motor and sensory development. A parent app communicates with the system for configuration and monitoring (future step).
 

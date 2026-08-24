@@ -24,6 +24,27 @@ I2C_ADDRESS         = 0x38     # I2C address of the FPGA bridge (shared by all S
 I2C_BUS_ID          = 1        # Raspberry Pi I2C bus number (bus 1 = GPIO2/GPIO3)
 NUM_SLOTS           = 12       # Total SMART_PAD slots supported by the BASE boards
 
+# --- Slot Register Map (ID_I2C_Info block) ---
+# Source: tokotouch_bringup.docx / tokotouch_usage.docx register tables.
+# Each slot's 4-byte ID_I2C_Info block (ID_I2C, CARD_ID, GEN_STATUS, MICRO_VERSION)
+# sits at SLOT_ID_INFO_BASE_ADDR + slot_number * SLOT_ID_INFO_STRIDE.
+SLOT_ID_INFO_BASE_ADDR = 0x3A  # Internal register address of Slot#0's ID_I2C_Info block
+SLOT_ID_INFO_STRIDE    = 4     # Byte offset between consecutive slots' ID_I2C_Info blocks
+
+# CARD_ID value read back for a slot with no SMART_PAD connected.
+# Empirically confirmed during 2026-08-23 hardware bring-up (repeated 0xFF reads on
+# slots with no pad attached). NOTE: engine/pad_discovery.py's CARD_ID_EMPTY currently
+# assumes 0 instead of 0xFF — that mismatch is a known bug, not yet fixed.
+SLOT_EMPTY_CARD_ID     = 0xFF
+
+# --- Slot Register Map (LED_VIBRATION CONTROL block) ---
+# Source: tokotouch_bringup.docx / tokotouch_usage.docx register tables.
+# Each slot's 10-byte LED_VIBRATION block sits at
+# SLOT_LED_VIB_BASE_ADDR + slot_number * SLOT_LED_VIB_STRIDE.
+# Byte layout: [LED1, LED0, LED3, LED2, LED5, LED4, VIB, LED_MODE, -, VIB_MODE]
+SLOT_LED_VIB_BASE_ADDR = 0x7A  # Internal register address of Slot#0's LED_VIBRATION block
+SLOT_LED_VIB_STRIDE    = 0x0A  # Byte offset between consecutive slots' LED_VIBRATION blocks
+
 # --- FSR Sensor Range ---
 # Raw 16-bit values returned by each FSR sensor.
 # These are determined by the SMART_PAD hardware — do not adjust.

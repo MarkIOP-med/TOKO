@@ -1,17 +1,11 @@
 # =============================================================================
 # TOKO — System Parameters
 # =============================================================================
-# This file is the single source of truth for all configurable values.
-# No other module should hardcode any of these values — always import from here.
+# Single source of truth for all configurable values — no magic numbers elsewhere.
 #
-# TWO SECTIONS:
-#   1. HARDWARE CONSTANTS — reflect physical wiring and FPGA firmware.
-#      Changing these requires hardware-level intervention (re-flashing FPGA,
-#      re-wiring the board). Do not change unless you know what you are doing.
-#
-#   2. SOFTWARE PARAMETERS — safe to tune at any time on the Raspberry Pi.
-#      These control system behaviour: sensitivity, timing, advancement rules.
-#      Adjust freely to match the child's age, ability, and session goals.
+# SECTION 1 — HARDWARE CONSTANTS: physical wiring / FPGA firmware. Don't change
+#              without hardware-level intervention (re-flash, re-wire).
+# SECTION 2 — SOFTWARE PARAMETERS: safe to tune anytime.
 # =============================================================================
 
 
@@ -20,45 +14,39 @@
 # =============================================================================
 
 # --- I2C / FPGA Bridge ---
-I2C_ADDRESS         = 0x38     # I2C address of the FPGA bridge (shared by all SMART_PADs)
-I2C_BUS_ID          = 1        # Raspberry Pi I2C bus number (bus 1 = GPIO2/GPIO3)
-NUM_SLOTS           = 12       # Total SMART_PAD slots supported by the BASE boards
+I2C_ADDRESS         = 0x38     # FPGA bridge I2C address
+I2C_BUS_ID          = 1        # Pi I2C bus number
+NUM_SLOTS           = 12       # Total SMART_PAD slots
 
-# --- Slot Register Map (ID_I2C_Info block) ---
-# Source: tokotouch_bringup.docx / tokotouch_usage.docx register tables.
-# Each slot's 4-byte ID_I2C_Info block (ID_I2C, CARD_ID, GEN_STATUS, MICRO_VERSION)
-# sits at SLOT_ID_INFO_BASE_ADDR + slot_number * SLOT_ID_INFO_STRIDE.
-SLOT_ID_INFO_BASE_ADDR = 0x3A  # Internal register address of Slot#0's ID_I2C_Info block
-SLOT_ID_INFO_STRIDE    = 4     # Byte offset between consecutive slots' ID_I2C_Info blocks
+# --- Slot Register Map (ID_I2C_Info block: ID_I2C, CARD_ID, GEN_STATUS, MICRO_VERSION) ---
+# Source: tokotouch_bringup.docx / tokotouch_usage.docx. Slot N = BASE + N*STRIDE.
+SLOT_ID_INFO_BASE_ADDR = 0x3A
+SLOT_ID_INFO_STRIDE    = 4
 
-# CARD_ID value read back for a slot with no SMART_PAD connected.
-# Empirically confirmed during 2026-08-23 hardware bring-up (repeated 0xFF reads on
-# slots with no pad attached). NOTE: engine/pad_discovery.py's CARD_ID_EMPTY currently
-# assumes 0 instead of 0xFF — that mismatch is a known bug, not yet fixed.
+# CARD_ID for an empty slot. Confirmed 2026-08-23 bring-up (0xFF reads on empty
+# slots). NOTE: engine/pad_discovery.py's CARD_ID_EMPTY still assumes 0 — known bug.
 SLOT_EMPTY_CARD_ID     = 0xFF
 
-# --- Slot Register Map (LED_VIBRATION CONTROL block) ---
-# Source: tokotouch_bringup.docx / tokotouch_usage.docx register tables.
-# Each slot's 10-byte LED_VIBRATION block sits at
-# SLOT_LED_VIB_BASE_ADDR + slot_number * SLOT_LED_VIB_STRIDE.
+# --- Slot Register Map (FSR block: FSR0_H, FSR0_L, FSR1_H, FSR1_L) ---
+SLOT_FSR_BASE_ADDR     = 0x0A
+SLOT_FSR_STRIDE        = 4
+
+# --- Slot Register Map (LED_VIBRATION block, 10 bytes) ---
 # Byte layout: [LED1, LED0, LED3, LED2, LED5, LED4, VIB, LED_MODE, -, VIB_MODE]
-SLOT_LED_VIB_BASE_ADDR = 0x7A  # Internal register address of Slot#0's LED_VIBRATION block
-SLOT_LED_VIB_STRIDE    = 0x0A  # Byte offset between consecutive slots' LED_VIBRATION blocks
+SLOT_LED_VIB_BASE_ADDR = 0x7A
+SLOT_LED_VIB_STRIDE    = 0x0A
 
-# --- FSR Sensor Range ---
-# Raw 16-bit values returned by each FSR sensor.
-# These are determined by the SMART_PAD hardware — do not adjust.
-FSR_MIN             = 0        # No pressure applied
-FSR_MAX             = 65535    # Maximum pressure (16-bit ceiling)
+# --- FSR Sensor Range (raw 16-bit) ---
+FSR_MIN             = 0
+FSR_MAX             = 65535
 
-# --- GPIO Pin Assignments (BCM numbering) ---
-# All GPIO pins are physically wired on the Control Unit board.
-GPIO_LED4           = 12       # Control unit LED4 (WS2812, daisy-chained)
-GPIO_LED5           = 13       # Control unit LED5
-GPIO_BUTTON_SW1     = 1        # Push button SW1
-GPIO_BUTTON_SW2     = 8        # Push button SW2
-GPIO_POWER_SENSE    = 25       # Power status sense pin (HIGH = power OK)
-GPIO_POWER_CTRL     = 24       # Power control output pin
+# --- GPIO Pin Assignments (BCM numbering, Control Unit board) ---
+GPIO_LED4           = 12       # WS2812, daisy-chained
+GPIO_LED5           = 13
+GPIO_BUTTON_SW1     = 1
+GPIO_BUTTON_SW2     = 8
+GPIO_POWER_SENSE    = 25       # HIGH = power OK
+GPIO_POWER_CTRL     = 24
 
 # --- Audio Hardware ---
 AUDIO_DEVICE        = "hw:1,0" # ALSA device string for the music board / speaker
@@ -69,65 +57,55 @@ AUDIO_DEVICE        = "hw:1,0" # ALSA device string for the music board / speake
 # =============================================================================
 
 # --- Polling ---
-# How often the system reads FSR sensor values from all active SMART_PADs.
-# Lower = more responsive but higher CPU load.
-# Higher = less responsive but lighter on resources.
 POLL_INTERVAL_MS                = 500   # ms between each full pad scan
 
-# --- Touch Pressure Thresholds ---
-# Expressed as a fraction of FSR_MAX (0.0 to 1.0).
-# A raw FSR value is divided by FSR_MAX to get a normalised pressure (0.0–1.0).
-# Touch is classified as:
-#   light  → pressure >= PRESSURE_LIGHT  and < PRESSURE_MEDIUM
-#   medium → pressure >= PRESSURE_MEDIUM and < PRESSURE_STRONG
-#   strong → pressure >= PRESSURE_STRONG
-PRESSURE_LIGHT                  = 0.15  # Minimum fraction for a light touch
-PRESSURE_MEDIUM                 = 0.40  # Minimum fraction for a medium press
-PRESSURE_STRONG                 = 0.70  # Minimum fraction for a strong press
+# --- Touch Pressure Thresholds (fraction of FSR_MAX) ---
+PRESSURE_LIGHT                  = 0.15  # light  >= this, < MEDIUM
+PRESSURE_MEDIUM                 = 0.40  # medium >= this, < STRONG
+PRESSURE_STRONG                 = 0.70  # strong >= this
 
 # --- Touch Duration Thresholds ---
-# Duration is measured from first detection to release.
-# Touch is classified as:
-#   tap   → duration <= DURATION_TAP_MS
-#   press → duration between tap and hold
-#   hold  → duration >= DURATION_HOLD_MS
-DURATION_TAP_MS                 = 300   # ms — maximum duration to classify as a tap
-DURATION_HOLD_MS                = 800   # ms — minimum duration to classify as a hold
+DURATION_TAP_MS                 = 300   # <= this = tap
+DURATION_HOLD_MS                = 800   # >= this = hold
 
-# --- FSR Balance ---
-# Each SMART_PAD has two FSR sensors: FSR0 (left) and FSR1 (right).
-# Balance is the normalised difference between them: abs(FSR0 - FSR1) / FSR_MAX.
-# If balance exceeds this threshold, the touch is flagged as laterally imbalanced.
-# Used in Tier 2 Level 6 and available for future logic.
-BALANCE_THRESHOLD               = 0.20  # Fraction — max allowed left/right difference
+# --- FSR Balance --- abs(FSR0-FSR1)/FSR_MAX above this = laterally imbalanced
+BALANCE_THRESHOLD               = 0.20
 
-# --- Multi-Pad Simultaneous Press ---
-# In Tier 3 guided tasks, some tasks require pressing multiple pads at the same time.
-# This window defines how close in time two presses must be to count as simultaneous.
-SIMULTANEOUS_WINDOW_MS          = 500   # ms — tolerance window for simultaneous presses
+# --- Multi-Pad Simultaneous Press --- max time gap to count as simultaneous
+SIMULTANEOUS_WINDOW_MS          = 500
 
-# --- Guided Task Hint ---
-# If the child has not pressed the expected pad(s) within this timeout,
-# the system triggers a hint response (lights up the correct pad).
-HINT_TIMEOUT_MS                 = 5000  # ms — time before hint is triggered
+# --- Guided Task Hint --- time before hint (pad light-up) triggers
+HINT_TIMEOUT_MS                 = 5000
 
-# --- Pad Reconnection ---
-# When a SMART_PAD stops responding mid-session (likely magnetically detached),
-# the system waits this long before officially flagging it as disconnected.
-# This avoids false alarms from brief magnetic connection interruptions.
-PAD_RECONNECT_TIMEOUT_MS        = 3000  # ms — grace period before flagging as missing
+# --- Pad Reconnection --- grace period before flagging a pad as disconnected
+PAD_RECONNECT_TIMEOUT_MS        = 3000
 
-# --- Advancement Criteria (default values) ---
-# These defaults apply to all Tier 2 levels unless overridden in the map.
-# The system suggests advancement when the child achieves
-# ADVANCEMENT_REQUIRED_SUCCESSES successful touches across the last
-# ADVANCEMENT_OVER_SESSIONS sessions.
-ADVANCEMENT_REQUIRED_SUCCESSES  = 10    # X — number of successes required
-ADVANCEMENT_OVER_SESSIONS       = 3     # Y — number of sessions to measure over
+# --- Advancement Criteria (Tier 2 default) ---
+ADVANCEMENT_REQUIRED_SUCCESSES  = 10    # X successes required...
+ADVANCEMENT_OVER_SESSIONS       = 3     # ...over Y sessions
 
 # --- Session Management ---
-MAX_SESSION_DURATION_MINS       = 20    # Session auto-closes after this many minutes
-SESSIONS_FOLDER                 = "~/tokotouch_project/sessions"  # Session log output path
+MAX_SESSION_DURATION_MINS       = 20
+SESSIONS_FOLDER                 = "~/tokotouch_project/sessions"
 
 # --- Audio ---
-AUDIO_FOLDER                    = "~/tokotouch_project/audio"     # Sound files location
+AUDIO_FOLDER                    = "~/tokotouch_project/audio"
+
+# --- Diagnostic Tool Settings (tokorun.py) ---
+# LED_ID (0-5) -> byte index in the LED_VIBRATION payload (hardware order is
+# fixed/non-sequential: [LED1, LED0, LED3, LED2, LED5, LED4]).
+LED_IDS = {0: 1, 1: 0, 2: 3, 3: 2, 4: 5, 5: 4}
+LED_TEST_BRIGHTNESS             = 255   # 0-255
+LED_DURATION_SEC                = 5     # auto-off after this many seconds
+
+# VIB_LEVEL (0-3) -> VIB intensity byte, used with vib_mode=0 (MOTOR_BEHAVE_DIRECT)
+VIB_LEVELS = {0: 0, 1: 85, 2: 170, 3: 255}
+VIB_DURATION_SEC                = 10    # auto-off after this many seconds
+
+# Voice track folder, relative to repo root. Files matched by prefix,
+# e.g. TRACK_ID=1 -> "Track1_*.mp3".
+TRACKS_FOLDER                   = "tracks"
+
+# Filename (inside TRACKS_FOLDER) played after every scan completes.
+REFRESH_TRACK                   = "refresh_track.mp3"
+REFRESH_TRACK_MAX_SEC           = 1     # cut playback short after this many seconds

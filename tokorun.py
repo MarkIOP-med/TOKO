@@ -106,27 +106,33 @@ def find_track_path(track_id) -> str | None:
     return matches[0] if matches else None
 
 
-def scan_slots(bus: SMBus, show_menu: bool = True) -> list:
+def scan_slots(bus: SMBus, show_menu: bool = True, quiet: bool = False) -> list:
+    # quiet=True: just return the occupied-slot list with no output (and no
+    # per-slot FSR read, which is only used for the display) — used by the
+    # listen loop's idle re-scan, which reports occupancy changes itself.
     occupied = []
-    print(f"Scanning {P.NUM_SLOTS} slots on I2C address 0x{P.I2C_ADDRESS:02X}...\n")
+    if not quiet:
+        print(f"Scanning {P.NUM_SLOTS} slots on I2C address 0x{P.I2C_ADDRESS:02X}...\n")
 
     for slot in range(P.NUM_SLOTS):
         id_i2c, card_id, gen_status, micro_version = read_id(bus, slot)
 
         if card_id != P.SLOT_EMPTY_CARD_ID:
             occupied.append(slot)
-            fsr_left, fsr_right = read_fsr(bus, slot)
-            print(
-                f"  Slot {slot:2d}  [X]  CARD_ID=0x{card_id:02X}  "
-                f"gen_status=0x{gen_status:02X}  micro_version=0x{micro_version:02X}  "
-                f"FSR_LEFT={fsr_left}  FSR_RIGHT={fsr_right}"
-            )
-        else:
+            if not quiet:
+                fsr_left, fsr_right = read_fsr(bus, slot)
+                print(
+                    f"  Slot {slot:2d}  [X]  CARD_ID=0x{card_id:02X}  "
+                    f"gen_status=0x{gen_status:02X}  micro_version=0x{micro_version:02X}  "
+                    f"FSR_LEFT={fsr_left}  FSR_RIGHT={fsr_right}"
+                )
+        elif not quiet:
             print(f"  Slot {slot:2d}  [ ]  empty")
 
-    print(f"\n{len(occupied)} / {P.NUM_SLOTS} pads detected")
+    if not quiet:
+        print(f"\n{len(occupied)} / {P.NUM_SLOTS} pads detected")
 
-    if show_menu:
+    if show_menu and not quiet:
         print(
             "\nCommands:\n"
             "  refresh                 — re-scan all slots (incl. FSR_LEFT/FSR_RIGHT)\n"
@@ -356,7 +362,7 @@ def run_listen_loop(bus: SMBus, rules: list, occupied: list, stop_event: threadi
         # Idle only: periodically re-check slot occupancy so a pad connected
         # (or disconnected) mid-level doesn't require a manual stop/start.
         if not any_active and (now - last_rescan) >= P.IDLE_RESCAN_INTERVAL_SEC:
-            current = scan_slots(bus, show_menu=False)
+            current = scan_slots(bus, show_menu=False, quiet=True)
             added = [s for s in current if s not in occupied]
             removed = [s for s in occupied if s not in current]
 

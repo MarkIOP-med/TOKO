@@ -57,12 +57,31 @@ AUDIO_DEVICE        = "hw:1,0" # ALSA device string for the music board / speake
 # =============================================================================
 
 # --- Polling ---
-POLL_INTERVAL_MS                = 500   # ms between each full pad scan
+POLL_INTERVAL_MS                = 300   # ms between each full pad scan
+
+# While LISTEN is idle (no slot touching, no response active), re-check slot
+# occupancy this often — adds newly-connected pads, drops disconnected ones.
+IDLE_RESCAN_INTERVAL_SEC        = 3
 
 # --- Touch Pressure Thresholds (fraction of FSR_MAX) ---
-PRESSURE_LIGHT                  = 0.15  # light  >= this, < MEDIUM
-PRESSURE_MEDIUM                 = 0.40  # medium >= this, < STRONG
-PRESSURE_STRONG                 = 0.70  # strong >= this
+# Calibrated 2026-08-26 from real presses on this hardware (observed raw FSR
+# ~1900-3800 out of 65535, i.e. pressure ~0.03-0.06) — the old 0.15/0.40/0.70
+# assumed presses would approach FSR_MAX, which they don't come close to.
+# PRESSURE_STRONG is extrapolated above every observed sample so far (nobody
+# pressed as hard as possible during calibration) — revisit once a genuine
+# firm/hard press sample is captured.
+PRESSURE_LIGHT                  = 0.02  # light  >= this, < MEDIUM
+PRESSURE_MEDIUM                 = 0.045 # medium >= this, < STRONG
+PRESSURE_STRONG                 = 0.08  # strong >= this — unverified, see above
+
+# Minimum pressure (fraction of FSR_MAX) worth printing live during LISTEN —
+# filters out sensor noise around the per-slot baseline reading.
+FSR_DISPLAY_THRESHOLD            = 0.0005
+
+# Raw FSR reading treated as "sensor not responding" rather than max pressure —
+# same all-ones sentinel pattern as SLOT_EMPTY_CARD_ID (0xFF). A real press
+# landing on the exact literal 16-bit ceiling is implausible.
+FSR_INVALID_RAW                  = 0xFFFF
 
 # --- Touch Duration Thresholds ---
 DURATION_TAP_MS                 = 300   # <= this = tap
@@ -103,9 +122,10 @@ VIB_LEVELS = {0: 0, 1: 85, 2: 170, 3: 255}
 VIB_DURATION_SEC                = 10    # auto-off after this many seconds
 
 # Voice track folder, relative to repo root. Files matched by prefix,
-# e.g. TRACK_ID=1 -> "Track1_*.mp3".
+# e.g. TRACK_ID=0 -> "Track0_*.mp3".
 TRACKS_FOLDER                   = "tracks"
 
-# Filename (inside TRACKS_FOLDER) played after every scan completes.
-REFRESH_TRACK                   = "refresh_track.mp3"
-REFRESH_TRACK_MAX_SEC           = 1     # cut playback short after this many seconds
+# --- Game Levels (tokorun.py 'start' command) ---
+GAME_LEVELS_FILE                = "config/game_levels.json"  # repo-relative
+DEFAULT_LEVEL                   = "level0"    # used when 'start' is typed with no level name
+RESPONSE_DURATION_SEC           = 2     # how long a rule-triggered LED/vib response stays on

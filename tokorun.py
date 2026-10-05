@@ -53,14 +53,27 @@ def _reset_active_locked() -> None:
     _active.update(timer=None, off_fn=None, label=None)
 
 
-def read_id(bus: SMBus, slot: int) -> bytes:
+def read_id(bus: SMBus, slot: int) -> bytes | None:
+    # Returns None if the I2C transaction itself fails (no ACK) — distinct
+    # from a clean read that comes back SLOT_EMPTY_CARD_ID (0xFF). Seen in the
+    # field with only the ADAPTER board connected: slots with no board wired
+    # behind them at all can NACK outright instead of returning 0xFF.
     reg = P.SLOT_ID_INFO_BASE_ADDR + slot * P.SLOT_ID_INFO_STRIDE
-    return bytes(bus.read_i2c_block_data(P.I2C_ADDRESS, reg, P.SLOT_ID_INFO_STRIDE))
+    try:
+        return bytes(bus.read_i2c_block_data(P.I2C_ADDRESS, reg, P.SLOT_ID_INFO_STRIDE))
+    except OSError:
+        return None
 
 
 def read_fsr(bus: SMBus, slot: int) -> tuple:
+    # On I2C failure, report the existing "sensor not responding" sentinel
+    # (FSR_INVALID_RAW) rather than raising — callers (e.g. run_listen_loop)
+    # already handle that value gracefully, so no caller needs to change.
     reg = P.SLOT_FSR_BASE_ADDR + slot * P.SLOT_FSR_STRIDE
-    data = bus.read_i2c_block_data(P.I2C_ADDRESS, reg, P.SLOT_FSR_STRIDE)
+    try:
+        data = bus.read_i2c_block_data(P.I2C_ADDRESS, reg, P.SLOT_FSR_STRIDE)
+    except OSError:
+        return (P.FSR_INVALID_RAW, P.FSR_INVALID_RAW)
     fsr_left = (data[0] << 8) | data[1]
     fsr_right = (data[2] << 8) | data[3]
     return (fsr_left, fsr_right)
@@ -71,8 +84,13 @@ def normalise_fsr(raw_value: int) -> float:
 
 
 def _write_slot(bus: SMBus, slot: int, payload: bytes) -> None:
+    # Swallow a failed write (I2C error on this slot) rather than crashing
+    # the whole command — same reasoning as read_id/read_fsr above.
     reg = P.SLOT_LED_VIB_BASE_ADDR + slot * P.SLOT_LED_VIB_STRIDE
-    bus.write_i2c_block_data(P.I2C_ADDRESS, reg, list(payload))
+    try:
+        bus.write_i2c_block_data(P.I2C_ADDRESS, reg, list(payload))
+    except OSError as e:
+        print(f"  Slot {slot:2d}: I2C write failed ({e})")
 
 
 def build_payload(led_id=None, vib_level=None) -> bytes:
@@ -115,7 +133,14 @@ def scan_slots(bus: SMBus, show_menu: bool = True, quiet: bool = False) -> list:
         print(f"Scanning {P.NUM_SLOTS} slots on I2C address 0x{P.I2C_ADDRESS:02X}...\n")
 
     for slot in range(P.NUM_SLOTS):
-        id_i2c, card_id, gen_status, micro_version = read_id(bus, slot)
+        id_bytes = read_id(bus, slot)
+
+        if id_bytes is None:
+            if not quiet:
+                print(f"  Slot {slot:2d}  [!]  I2C error (no response)")
+            continue
+
+        id_i2c, card_id, gen_status, micro_version = id_bytes
 
         if card_id != P.SLOT_EMPTY_CARD_ID:
             occupied.append(slot)

@@ -135,7 +135,8 @@ def scan_slots(bus: SMBus, show_menu: bool = True, quiet: bool = False) -> list:
     if show_menu and not quiet:
         print(
             "\nCommands:\n"
-            "  refresh                 — re-scan all slots (incl. FSR_LEFT/FSR_RIGHT)\n"
+            "  r | refresh             — re-scan all slots (incl. FSR_LEFT/FSR_RIGHT), then flash LEDs "
+            "on all detected pads\n"
             "  vib SLOT LEVEL          — pulse vibration (LEVEL 0-3) for VIB_DURATION_SEC\n"
             "  led SLOT LED_ID         — light one LED (LED_ID 0-5) for LED_DURATION_SEC\n"
             "  voice TRACK_ID          — play TRACK_ID's file from the tracks folder\n"
@@ -146,6 +147,25 @@ def scan_slots(bus: SMBus, show_menu: bool = True, quiet: bool = False) -> list:
         )
 
     return occupied
+
+
+def flash_occupied(bus: SMBus, occupied: list) -> None:
+    """Light all 6 LEDs on every currently-occupied slot for LED_DURATION_SEC —
+    a quick visual headcount after a scan, so what's printed can be checked
+    against what's physically lit on the pads. Blocks until the flash ends."""
+    if not occupied:
+        return
+
+    payload = bytes([P.LED_TEST_BRIGHTNESS] * 6 + [0, 0, 0, 6])
+    # byte layout: [LED1,LED0,LED3,LED2,LED5,LED4, VIB=0, LED_MODE=0 SOLID, reserved, VIB_MODE=6 CONST_0]
+    for slot in occupied:
+        _write_slot(bus, slot, payload)
+
+    print(f"  Lit {len(occupied)} pad(s) for {P.LED_DURATION_SEC}s: {occupied}")
+    time.sleep(P.LED_DURATION_SEC)
+
+    for slot in occupied:
+        _write_slot(bus, slot, ALL_OFF_PAYLOAD)
 
 
 def start_pulse(bus: SMBus, slot: int, payload: bytes, duration_sec: float, label: str) -> None:
@@ -467,8 +487,9 @@ def main() -> None:
                 elif level_running():
                     print("  A level is running — type 'stop' to end it first.")
 
-                elif command == "refresh" and len(parts) == 1:
-                    scan_slots(bus)
+                elif command in ("r", "refresh") and len(parts) == 1:
+                    occupied = scan_slots(bus)
+                    flash_occupied(bus, occupied)
 
                 elif command in ("vib", "led") and len(parts) == 3:
                     slot, value = int(parts[1]), int(parts[2])
@@ -484,7 +505,7 @@ def main() -> None:
 
                 else:
                     print(
-                        "  Unrecognized command. Use: refresh | vib SLOT LEVEL | "
+                        "  Unrecognized command. Use: r/refresh | vib SLOT LEVEL | "
                         "led SLOT LED_ID | voice TRACK_ID | start [LEVEL] | stop | exit"
                     )
             except ValueError:

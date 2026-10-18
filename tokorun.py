@@ -105,6 +105,18 @@ def build_payload(led_id=None, vib_level=None) -> bytes:
     # byte layout: [LED1,LED0,LED3,LED2,LED5,LED4, VIB, LED_MODE=0 SOLID, reserved, VIB_MODE]
 
 
+def build_response_payload(vib_level=None) -> bytes:
+    # All 6 LEDs on, animated by the hardware's own rotating "chase" LED_MODE
+    # (RESPONSE_CHASE_LED_MODE) instead of a single static LED — used for a
+    # fired rule response (apply_response), so it's clearly visible rather
+    # than one small LED lighting up.
+    led_values = [P.LED_TEST_BRIGHTNESS] * 6
+    vib_byte = P.VIB_LEVELS[vib_level] if vib_level is not None else 0
+    vib_mode = 0 if vib_level else 6  # 0=MOTOR_BEHAVE_DIRECT (steady) if vibrating, 6=CONST_0 (off) otherwise
+    return bytes([*led_values, vib_byte, P.RESPONSE_CHASE_LED_MODE, 0, vib_mode])
+    # byte layout: [LED1,LED0,LED3,LED2,LED5,LED4, VIB, LED_MODE=chase, reserved, VIB_MODE]
+
+
 def play_mp3(path: str) -> subprocess.Popen:
     global _voice_proc
     with _voice_lock:
@@ -124,40 +136,33 @@ def find_track_path(track_id) -> str | None:
     return matches[0] if matches else None
 
 
-def scan_slots(bus: SMBus, show_menu: bool = True, quiet: bool = False) -> list:
-    # quiet=True: just return the occupied-slot list with no output (and no
-    # per-slot FSR read, which is only used for the display) — used by the
-    # listen loop's idle re-scan, which reports occupancy changes itself.
+def scan_slots(bus: SMBus, show_menu: bool = True) -> list:
     occupied = []
-    if not quiet:
-        print(f"Scanning {P.NUM_SLOTS} slots on I2C address 0x{P.I2C_ADDRESS:02X}...\n")
+    print(f"Scanning {P.NUM_SLOTS} slots on I2C address 0x{P.I2C_ADDRESS:02X}...\n")
 
     for slot in range(P.NUM_SLOTS):
         id_bytes = read_id(bus, slot)
 
         if id_bytes is None:
-            if not quiet:
-                print(f"  Slot {slot:2d}  [!]  I2C error (no response)")
+            print(f"  Slot {slot:2d}  [!]  I2C error (no response)")
             continue
 
         id_i2c, card_id, gen_status, micro_version = id_bytes
 
         if card_id != P.SLOT_EMPTY_CARD_ID:
             occupied.append(slot)
-            if not quiet:
-                fsr_left, fsr_right = read_fsr(bus, slot)
-                print(
-                    f"  Slot {slot:2d}  [X]  CARD_ID=0x{card_id:02X}  "
-                    f"gen_status=0x{gen_status:02X}  micro_version=0x{micro_version:02X}  "
-                    f"FSR_LEFT={fsr_left}  FSR_RIGHT={fsr_right}"
-                )
-        elif not quiet:
+            fsr_left, fsr_right = read_fsr(bus, slot)
+            print(
+                f"  Slot {slot:2d}  [X]  CARD_ID=0x{card_id:02X}  "
+                f"gen_status=0x{gen_status:02X}  micro_version=0x{micro_version:02X}  "
+                f"FSR_LEFT={fsr_left}  FSR_RIGHT={fsr_right}"
+            )
+        else:
             print(f"  Slot {slot:2d}  [ ]  empty")
 
-    if not quiet:
-        print(f"\n{len(occupied)} / {P.NUM_SLOTS} pads detected")
+    print(f"\n{len(occupied)} / {P.NUM_SLOTS} pads detected")
 
-    if show_menu and not quiet:
+    if show_menu:
         print(
             "\nCommands:\n"
             "  r | refresh             — re-scan all slots (incl. FSR_LEFT/FSR_RIGHT), then flash LEDs "
@@ -321,8 +326,12 @@ def classify_level(rules: list, pressure: float) -> str:
 def apply_response(bus: SMBus, slot: int, rule: dict) -> None:
     """Writes the rule's LED/vib payload immediately. No background timer here —
     the listen loop's own table tracks response_off_at and turns it off itself
-    on a later poll tick, same as every other piece of per-slot state."""
-    payload = build_payload(rule.get("led_id"), rule.get("vib_level"))
+    on a later poll tick, same as every other piece of per-slot state.
+
+    LED is always the all-LEDs chase pattern (build_response_payload) rather
+    than the rule's led_id — the per-tier led_id in game_levels.json is no
+    longer consulted here; vib_level/track_id still are."""
+    payload = build_response_payload(rule.get("vib_level"))
     _write_slot(bus, slot, payload)
 
     track_id = rule.get("track_id")
@@ -338,20 +347,17 @@ def _new_slot_state() -> dict:
 
 
 def run_listen_loop(bus: SMBus, rules: list, occupied: list, stop_event: threading.Event) -> None:
-    occupied = list(occupied)  # local copy — idle re-scan below can grow/shrink it
     # Baseline = each slot's FSR reading right now, before anyone's touching —
     # every later reading is measured as a delta off this, so a pad's resting
     # offset (never exactly 0) doesn't get counted as pressure.
     baseline = {slot: read_fsr(bus, slot) for slot in occupied}
     # The state table: one row per slot, read AND written every poll tick.
     touch_state = {slot: _new_slot_state() for slot in occupied}
-    last_rescan = time.time()
 
     print(f"  {'TIME':12}  {'SLOT':4}  {'FSR_LEFT':8}  {'FSR_RIGHT':9}  {'PRESSURE':8}  {'LEVEL':16}  RESPONSE")
 
     while not stop_event.is_set():
         now = time.time()
-        any_active = False
         for slot in occupied:
             fsr_left, fsr_right = read_fsr(bus, slot)
             base_left, base_right = baseline[slot]
@@ -391,39 +397,15 @@ def run_listen_loop(bus: SMBus, rules: list, occupied: list, stop_event: threadi
                 st["start"] = None
                 st["fired"] = False
 
-            any_active = any_active or touching or st["response_active"]
-
-            # Always print on a level or response change (even below
-            # FSR_DISPLAY_THRESHOLD) so a flaky/glitchy reading is visible
-            # instead of silently re-triggering.
-            if level_changed or response_changed or pressure >= P.FSR_DISPLAY_THRESHOLD:
+            # Print on a level/response change, and continuously while an
+            # actual touch is in progress — silent whenever nothing's pressed.
+            if level_changed or response_changed or touching:
                 timestamp = time.strftime("%H:%M:%S") + f".{int(now * 1000) % 1000:03d}"
                 response_label = "ON" if st["response_active"] else ""
                 print(
                     f"  {timestamp:12}  {slot:<4d}  {diff_left:<8d}  {diff_right:<9d}  "
                     f"{pressure:<8.3f}  {level_name:16}  {response_label}"
                 )
-
-        # Idle only: periodically re-check slot occupancy so a pad connected
-        # (or disconnected) mid-level doesn't require a manual stop/start.
-        if not any_active and (now - last_rescan) >= P.IDLE_RESCAN_INTERVAL_SEC:
-            current = scan_slots(bus, show_menu=False, quiet=True)
-            added = [s for s in current if s not in occupied]
-            removed = [s for s in occupied if s not in current]
-
-            for slot in removed:
-                _write_slot(bus, slot, ALL_OFF_PAYLOAD)
-                del baseline[slot]
-                del touch_state[slot]
-            for slot in added:
-                baseline[slot] = read_fsr(bus, slot)
-                touch_state[slot] = _new_slot_state()
-
-            if added or removed:
-                print(f"  [idle re-scan] added={added}  removed={removed}")
-
-            occupied = current
-            last_rescan = now
 
         stop_event.wait(P.POLL_INTERVAL_MS / 1000)
 

@@ -64,15 +64,16 @@ POLL_INTERVAL_MS                = 300   # ms between each full pad scan
 IDLE_RESCAN_INTERVAL_SEC        = 3
 
 # --- Touch Pressure Thresholds (fraction of FSR_MAX) ---
-# Calibrated 2026-08-26 from real presses on this hardware (observed raw FSR
-# ~1900-3800 out of 65535, i.e. pressure ~0.03-0.06) — the old 0.15/0.40/0.70
-# assumed presses would approach FSR_MAX, which they don't come close to.
-# PRESSURE_STRONG is extrapolated above every observed sample so far (nobody
-# pressed as hard as possible during calibration) — revisit once a genuine
-# firm/hard press sample is captured.
-PRESSURE_LIGHT                  = 0.02  # light  >= this, < MEDIUM
-PRESSURE_MEDIUM                 = 0.045 # medium >= this, < STRONG
-PRESSURE_STRONG                 = 0.08  # strong >= this — unverified, see above
+# STOP-GAP 2026-10-18: the 3 currently-working pads produce much weaker raw
+# FSR deltas than the 2026-08-26 calibration batch (observed raw ~100-1001 out
+# of 65535 here, i.e. pressure ~0.002-0.015, vs. that batch's ~1900-3800/
+# 0.03-0.06) — the old 0.02/0.045/0.08 thresholds were unreachable, so every
+# press logged as "no level reached". Scaled down to fit this observed range.
+# PROVISIONAL — only one bare data point (0.015) informed PRESSURE_STRONG;
+# revisit with a deliberate light/medium/firm press pass on these 3 pads.
+PRESSURE_LIGHT                  = 0.005 # light  >= this, < MEDIUM
+PRESSURE_MEDIUM                 = 0.010 # medium >= this, < STRONG
+PRESSURE_STRONG                 = 0.014 # strong >= this — unverified, see above
 
 # Minimum pressure (fraction of FSR_MAX) worth printing live during LISTEN —
 # filters out sensor noise around the per-slot baseline reading.
@@ -128,4 +129,10 @@ TRACKS_FOLDER                   = "tracks"
 # --- Game Levels (tokorun.py 'start' command) ---
 GAME_LEVELS_FILE                = "config/game_levels.json"  # repo-relative
 DEFAULT_LEVEL                   = "level0"    # used when 'start' is typed with no level name
-RESPONSE_DURATION_SEC           = 2     # how long a rule-triggered LED/vib response stays on
+RESPONSE_DURATION_SEC           = 3     # how long a rule-triggered LED/vib response stays on
+
+# LED_MODE for a fired rule response: all 6 LEDs on, hardware-animated rotating
+# chase (pad's own microcontroller cycles through them — see LED_MODES table
+# in DOCS/TOKO_SOFTWARE_REFERENCE.md). 22 = LED_BLINK_CHASE_FWD_SLOW, ~125ms
+# per LED step — slow enough to see each one light up in turn.
+RESPONSE_CHASE_LED_MODE         = 22

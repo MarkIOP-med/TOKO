@@ -7,9 +7,9 @@
       "identify_duration_sec": 0.5
     },
     "rules": [
-      { "name": "high",    "min_pressure": 0.08,  "min_duration_ms": 800, "led_id": 5, "vib_level": 3, "track_id": 3 },
-      { "name": "medium",  "min_pressure": 0.045, "min_duration_ms": 500, "led_id": 2, "vib_level": 2, "track_id": 2 },
-      { "name": "minimum", "min_pressure": 0.02,  "min_duration_ms": 500, "led_id": 1, "vib_level": 1, "track_id": 1 }
+      { "name": "high",    "min_pressure": 0.014, "min_duration_ms": 800, "led_id": 5, "vib_level": 3, "track_id": 3 },
+      { "name": "medium",  "min_pressure": 0.010, "min_duration_ms": 500, "led_id": 2, "vib_level": 2, "track_id": 2 },
+      { "name": "minimum", "min_pressure": 0.005, "min_duration_ms": 500, "led_id": 1, "vib_level": 1, "track_id": 1 }
     ]
   }
 }
